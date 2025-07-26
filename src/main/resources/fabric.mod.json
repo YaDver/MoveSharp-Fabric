@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "move-sharp",
+  "version": "${version}",
+  "name": "MoveSharp",
+  "description": "",
+  "authors": ["YaDver"],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/move-sharp/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "fabric-datagen": [
+      "com.yadver.moveSharp.client.MoveSharpDataGenerator"
+    ],
+    "client": [
+      "com.yadver.moveSharp.client.MoveSharpClient"
+    ],
+    "main": [
+      "com.yadver.moveSharp.MoveSharp"
+    ]
+  },
+  "mixins": [
+    "move-sharp.mixins.json",
+    {
+      "config": "move-sharp.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
