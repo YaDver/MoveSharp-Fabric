@@ -106,6 +106,7 @@ public class MoveSharpClient implements ClientModInitializer {
 
                 ModNetwork.playerSliding(player.getUuid(), isSliding);
 //                ModNetwork.playerClimbing(player.getUuid(), isClimbing);
+                ModNetwork.playerSliding(isSliding);
             }
         });
 
