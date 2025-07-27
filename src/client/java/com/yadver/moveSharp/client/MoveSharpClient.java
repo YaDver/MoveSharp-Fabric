@@ -1,36 +1,50 @@
 package com.yadver.moveSharp.client;
 
+import com.yadver.moveSharp.client.Utils.SmoothAcceleration;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.minecraft.block.BlockState;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.BlockView;
 
+import java.util.Objects;
+
 public class MoveSharpClient implements ClientModInitializer {
     public static final String MOD_ID = "move-sharp";
+
     static boolean isClimbing = false;
     static boolean isSliding = false;
+    static boolean canClimbing = true;
+    static boolean canSliding = true;
+
+    private static double startSlidingPos;
+    SmoothAcceleration smoothClimb;
+    SmoothAcceleration smoothSlide;
+
+    static double climbingSpeed = 0.15;
+    static double slidingSpeed = -0.05;
 
     //  True если блок под игроком пустой.
-    public static boolean isBlockBelow(BlockView world, Vec3d playerPos) {
+    public static boolean freeBelow(BlockView world, Vec3d playerPos) {
         Vec3d _blockPos = playerPos.add(0, -1, 0);
-        return world.getBlockState(BlockPos.ofFloored(_blockPos)).isAir() ||
-                world.getBlockState(BlockPos.ofFloored(_blockPos)).isReplaceable() ||
-                world.getBlockState(BlockPos.ofFloored(_blockPos)).hasSidedTransparency();
+        BlockState blockState = world.getBlockState(BlockPos.ofFloored(_blockPos));
+        return (blockState.isAir() || blockState.isReplaceable());
     }
 
     //  True если блок над игроком пустой.
-    public static boolean isBlockAbove(BlockView world, Vec3d playerPos) {
+    public static boolean freeAbove(BlockView world, Vec3d playerPos) {
         Vec3d _blockPos = playerPos.add(0, 2, 0);
-        return !(world.getBlockState(BlockPos.ofFloored(_blockPos)).isAir() ||
-               world.getBlockState(BlockPos.ofFloored(_blockPos)).isReplaceable());
+        BlockState blockState = world.getBlockState(BlockPos.ofFloored(_blockPos));
+        return (blockState.isAir() || blockState.isReplaceable());
     }
 
-    public static boolean isMoveToWall(BlockView world, ClientPlayerEntity player) {
+    public static boolean isOnWall(BlockView world, ClientPlayerEntity player, boolean isClimbRequest) {
         Vec3d p_look = player.getRotationVector();
         Vec3d p_pos = player.getPos();
+        Vec3d p_vel = player.getVelocity();
 
         //  Получаем позицию блока перед игроком засчёт смещения позиции игрока на один блок в сторону направления взгляда.
         boolean xORz = Math.abs(p_look.x) > Math.abs(p_look.z);
@@ -50,26 +64,41 @@ public class MoveSharpClient implements ClientModInitializer {
         //  для карабканья (легче просто запрыгнуть на один блок), но оно должно учитываться, если игрок уже карабкается,
         //  иначе он не сможет забратся на блок, над котором 3 и более пустых блока. Для этого следует добавить переменную
         //  или метод isClimbing.
-        if (!isClimbing) {
-            switch (blocksFront.toString()) {
-                case ("0000") -> {
-                    return false;
+        if (isClimbRequest) {
+            if (!isClimbing) {
+                switch (blocksFront.toString()) {
+                    case ("0000"), ("1110"), ("0001"), ("0011"), ("0111"), ("1111") -> {
+                        return false;
+                    }
+                    case ("0101"), ("0110") -> {
+                        return freeAbove(world, p_pos);
+                    }
+                    default -> {
+                        return true;
+                    }
                 }
-                default -> {
-                    return true;
+            } else {
+                switch (blocksFront.toString()) {
+                    case ("0000"), ("0011"), ("0010"), ("0001") -> {
+                        if (xORz) {
+                            player.setVelocity(0.1 * Math.round(p_look.x), p_vel.y, p_vel.z);
+                        } else player.setVelocity(p_vel.x, p_vel.y, 0.1 * Math.round(p_look.z));
+
+                        return false;
+                    }
+                    default -> {
+                        return true;
+                    }
                 }
             }
         } else {
             switch (blocksFront.toString()) {
-                case ("0000") -> {
-                    if (xORz) {
-                        player.setVelocity(0.1*Math.round(p_look.x), player.getVelocity().y, player.getVelocity().z);
-                    } else player.setVelocity(player.getVelocity().x, player.getVelocity().y, 0.1*Math.round(p_look.z));
-                    isClimbing = false;
-                    return false;
+                case ("1000"), ("1100"), ("1110"), ("1111") -> {
+                    if (isSliding) return !(startSlidingPos - player.getPos().y > 3);
+                    return true;
                 }
                 default -> {
-                    return true;
+                    return false;
                 }
             }
         }
@@ -82,39 +111,57 @@ public class MoveSharpClient implements ClientModInitializer {
             ClientWorld world = Client.world;
 
             if (player != null && world != null) {
-//                player.sendMessage(Text.literal(player.fallDistance + ""));
-                if (Client.options.sprintKey.isPressed() &&
-                        player.getRotationVector().y > 0 &&
-                        isBlockBelow(world, player.getPos()) &&
-//                        isBlockAbove(world, player.getPos()) &&
-                        isMoveToWall(world, player)
-                        ) {
-                    isClimbing = true;
-                    player.setVelocity(player.getVelocity().x, 0.15, player.getVelocity().z);
-                } else {
-                    isClimbing = false;
-                }
-                if (Client.options.sneakKey.isPressed() &&
-//                        player.getRotationVector().y > 0 &&
-                        isBlockBelow(world, player.getPos()) &&
-//                        isBlockAbove(world, player.getPos()) &&
-                        isMoveToWall(world, player)
-                ) {
-                    player.setVelocity(player.getVelocity().x, player.getVelocity().y/2, player.getVelocity().z);
-                    isSliding = true;
-                } else isSliding = false;
+                Vec3d vel = player.getVelocity();
 
-                ModNetwork.playerSliding(player.getUuid(), isSliding);
-//                ModNetwork.playerClimbing(player.getUuid(), isClimbing);
+                //  Climbing
+                if (Client.options.sprintKey.isPressed() &&
+                        canClimbing &&
+                        freeBelow(world, player.getPos()) &&
+                        isOnWall(world, player, true)
+                        ) {
+                    if (!isClimbing){
+                        if (vel.y > 0) {
+                            smoothClimb = new SmoothAcceleration(vel.y, climbingSpeed, 0.1);
+                        } else smoothClimb = new SmoothAcceleration(0, climbingSpeed, 0.1);
+                    }
+                    isClimbing = true;
+                    player.setVelocity(vel.x, smoothClimb.update() , vel.z);
+                } else {
+                    if (isClimbing) {
+                        canClimbing = false;
+                        smoothClimb.restore();
+                        isClimbing = false;
+                    }
+                }
+
+                //  Sliding
+                if (Client.options.sneakKey.isPressed() &&
+                        canSliding &&
+                        freeBelow(world, player.getPos()) &&
+                        isOnWall(world, player, false)
+                ) {
+                    if (!isSliding) {
+                        startSlidingPos = player.getPos().y;
+                        smoothSlide = new SmoothAcceleration(vel.y, slidingSpeed, 0.1);
+                    }
+
+                    player.setVelocity(vel.x/2, smoothSlide.update(), vel.z/2);
+
+                    isSliding = true;
+                } else {
+                    if (isSliding) {
+                        canSliding = false;
+                        isSliding = false;
+                    }
+                    if (smoothSlide != null) smoothSlide.restore();
+                }
+
+                if (player.isOnGround()) {
+                    canClimbing = true;
+                    canSliding = true;
+                }
                 ModNetwork.playerSliding(isSliding);
             }
         });
-
-//        ClientPlayNetworking.registerGlobalReceiver(new Identifier(MOD_ID, "velocity"),
-//                (Client, clientPlayNetworkHandler,
-//                 buf, packetSender) -> {
-//                    assert Client.player != null;
-//                    Client.player.setVelocity(buf.readVector3f().x, buf.readVector3f().y, buf.readVector3f().z);
-//                });
     }
 }
