@@ -23,8 +23,6 @@ public class MoveSharp implements ModInitializer {
         ServerPlayNetworking.registerGlobalReceiver(CHANNEL_crawl,
                 (server, player,
                  serverPlayNetworkHandler, buf,
-                 packetSender) ->  {
-            isCrawling = buf.readBoolean();
-        });
+                 packetSender) -> isCrawling = buf.readBoolean());
     }
 }
