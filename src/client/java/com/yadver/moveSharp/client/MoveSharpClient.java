@@ -10,8 +10,6 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.BlockView;
 
-import java.util.Objects;
-
 public class MoveSharpClient implements ClientModInitializer {
     public static final String MOD_ID = "move-sharp";
 
@@ -19,6 +17,9 @@ public class MoveSharpClient implements ClientModInitializer {
     static boolean isSliding = false;
     static boolean canClimbing = true;
     static boolean canSliding = true;
+
+    //  Если true - увеличивает максимальную высоту для карабканья с 3-х до 4-х блоков.
+    static boolean fourBlockClimbMax = true;
 
     private static double startSlidingPos;
     SmoothAcceleration smoothClimb;
@@ -31,6 +32,9 @@ public class MoveSharpClient implements ClientModInitializer {
     public static boolean freeBelow(BlockView world, Vec3d playerPos) {
         Vec3d _blockPos = playerPos.add(0, -1, 0);
         BlockState blockState = world.getBlockState(BlockPos.ofFloored(_blockPos));
+        //  isAir() - Если блок является воздухом.
+        //  isReplaceable() - Если блок является заменяемым, например травой, снегом или чем-то подобным.
+        //  Посаженые растения не являются ни тем, ни другим. Нужно найти для этого решение.
         return (blockState.isAir() || blockState.isReplaceable());
     }
 
@@ -38,21 +42,30 @@ public class MoveSharpClient implements ClientModInitializer {
     public static boolean freeAbove(BlockView world, Vec3d playerPos) {
         Vec3d _blockPos = playerPos.add(0, 2, 0);
         BlockState blockState = world.getBlockState(BlockPos.ofFloored(_blockPos));
+        //  isAir() - Если блок является воздухом.
+        //  isReplaceable() - Если блок является заменяемым, например травой, снегом или чем-то подобным.
+        //  Так как блок над игроком в теории не может быть растением или слоём снега в isReplaceable() нет нужды.
+        //  Но так как это работает, я трогать не буду. Вдруг есть блоки, которые считаются заменяемыми, через них можно
+        //  проходить, и тогда этот метод будет необходим (возможно в других модах или в майнкрафте есть подобные).
         return (blockState.isAir() || blockState.isReplaceable());
     }
 
+    //  Получаем boolean, когда персонаж стоит у стены и смотрит на неё.
+    //  Работа описана внутри метода.
     public static boolean isOnWall(BlockView world, ClientPlayerEntity player, boolean isClimbRequest) {
         Vec3d p_look = player.getRotationVector();
         Vec3d p_pos = player.getPos();
         Vec3d p_vel = player.getVelocity();
 
-        //  Получаем позицию блока перед игроком засчёт смещения позиции игрока на один блок в сторону направления взгляда.
+        //  Получаем позицию блока перед игроком за счёт смещения позиции игрока на один блок в сторону направления взгляда.
         boolean xORz = Math.abs(p_look.x) > Math.abs(p_look.z);
         Vec3d _blockPos = xORz
                 ? p_pos.add(p_look.x, 0, 0) : p_pos.add(0, 0, p_look.z);
         StringBuilder blocksFront = new StringBuilder();
 
         //  Проверяем 4 блока перед персонажем на уровне ног и выше и создаём схему вида 0110, где 0 - блока нет, 1 - есть.
+        //  Возможное изменение: вместо методов freeBelow() и freeAbove() добавить в схему два новых значения по краям,
+        //  тогда 100001 говорит о том, что перед игроком нет блоков на высоте 4-х блоков, но под ним и над ним есть блоки.
         for (int b = 0; b<=3; b++) {
             if (world.getBlockState(BlockPos.ofFloored(_blockPos.add(0, b, 0))).isAir() ||
                     world.getBlockState(BlockPos.ofFloored(_blockPos.add(0, b, 0))).isReplaceable()) {
@@ -60,17 +73,26 @@ public class MoveSharpClient implements ClientModInitializer {
             } else blocksFront.append("1");
         }
 
-        //  Проверяем все варианты, при которых игрок может карабкаться. Важно учитывать, что 1000 не являеться возможным
-        //  для карабканья (легче просто запрыгнуть на один блок), но оно должно учитываться, если игрок уже карабкается,
-        //  иначе он не сможет забратся на блок, над котором 3 и более пустых блока. Для этого следует добавить переменную
-        //  или метод isClimbing.
+        //  Проверяем все варианты, при которых игрок может карабкаться или скользить.
+        //  isClimbRequest необходим, так как этот метод вызывают как карабканье, так и скольжение.
+        //  (Если игрок скользит по стене, то это считается за условие !isClimbing, и работает та логика метода, которая
+        //  ограничивает условия, когда может позволить игроку начать карабкаться. А эти ограничения не должны работать
+        //  на механику скольжения)
         if (isClimbRequest) {
             if (!isClimbing) {
                 switch (blocksFront.toString()) {
-                    case ("0000"), ("1110"), ("0001"), ("0011"), ("0111"), ("1111") -> {
+                    //  Ограничивает карабканье, если перед игроком блоков нет или 5-ый блок (при прыжке
+                    //  становиться 4-ым) не позволит залезть на стену из-за лимита во максимальной высоте карабканья.
+                    case ("0000"), ("0001"), ("0011"), ("0111"), ("1111") -> {
                         return false;
                     }
-                    case ("0101"), ("0110") -> {
+                    //  Ограничение на максимальную высоту карабканья (от земли) в 4 блока можно установить, если
+                    //  параметр fourBlockClimbMax будет true, иначе ограничение будет в 3 блока
+                    case ("1110"), ("0110"), ("0010") -> {
+                        return fourBlockClimbMax;
+                    }
+                    case ("0101"), ("0100")
+                            -> {
                         return freeAbove(world, p_pos);
                     }
                     default -> {
@@ -116,6 +138,7 @@ public class MoveSharpClient implements ClientModInitializer {
                 //  Climbing
                 if (Client.options.sprintKey.isPressed() &&
                         canClimbing &&
+                        !isSliding &&
                         freeBelow(world, player.getPos()) &&
                         isOnWall(world, player, true)
                         ) {
@@ -137,6 +160,7 @@ public class MoveSharpClient implements ClientModInitializer {
                 //  Sliding
                 if (Client.options.sneakKey.isPressed() &&
                         canSliding &&
+                        !isClimbing &&
                         freeBelow(world, player.getPos()) &&
                         isOnWall(world, player, false)
                 ) {
@@ -154,6 +178,12 @@ public class MoveSharpClient implements ClientModInitializer {
                         isSliding = false;
                     }
                     if (smoothSlide != null) smoothSlide.restore();
+                }
+
+                //  Если игрок падает больше 5 блоков, то он не сможет зацепиться для карабканья или скольжения.
+                if (player.fallDistance >= 5) {
+                    canClimbing = false;
+                    canSliding = false;
                 }
 
                 if (player.isOnGround()) {
