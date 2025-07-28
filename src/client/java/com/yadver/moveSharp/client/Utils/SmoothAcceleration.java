@@ -2,10 +2,10 @@ package com.yadver.moveSharp.client.Utils;
 
 public class SmoothAcceleration {
 
-    private double initialSpeed;
+    private final double initialSpeed;
     private double currentSpeed;
-    private double targetSpeed;
-    private double accelerationRate;
+    private final double targetSpeed;
+    private final double accelerationRate;
     private boolean accelerating;
 
     public SmoothAcceleration(double initialSpeed, double targetSpeed, double accelerationRate) {
@@ -34,4 +34,3 @@ public class SmoothAcceleration {
         return currentSpeed;
     }
 }
-
