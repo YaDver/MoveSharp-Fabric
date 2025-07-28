@@ -12,9 +12,11 @@ import net.minecraft.world.BlockView;
 
 public class MoveSharpClient implements ClientModInitializer {
     public static final String MOD_ID = "move-sharp";
+//    private static Logger LOGGER = new Logger();
 
     static boolean isClimbing = false;
     static boolean isSliding = false;
+    public static boolean isCrawling = false;
     static boolean canClimbing = true;
     static boolean canSliding = true;
 
@@ -46,7 +48,7 @@ public class MoveSharpClient implements ClientModInitializer {
         //  isReplaceable() - Если блок является заменяемым, например травой, снегом или чем-то подобным.
         //  Так как блок над игроком в теории не может быть растением или слоём снега в isReplaceable() нет нужды.
         //  Но так как это работает, я трогать не буду. Вдруг есть блоки, которые считаются заменяемыми, через них можно
-        //  проходить, и тогда этот метод будет необходим (возможно в других модах или в майнкрафте есть подобные).
+        //  проходить, и тогда этот метод будет необходим (возможно в других модах или в майнкрафт есть подобные).
         return (blockState.isAir() || blockState.isReplaceable());
     }
 
@@ -81,8 +83,8 @@ public class MoveSharpClient implements ClientModInitializer {
         if (isClimbRequest) {
             if (!isClimbing) {
                 switch (blocksFront.toString()) {
-                    //  Ограничивает карабканье, если перед игроком блоков нет или 5-ый блок (при прыжке
-                    //  становиться 4-ым) не позволит залезть на стену из-за лимита во максимальной высоте карабканья.
+                    //  Ограничивает карабканье, если перед игроком блоков нет или 5-й блок (при прыжке
+                    //  становиться 4-м) не позволит залезть на стену из-за лимита во максимальной высоте карабканья.
                     case ("0000"), ("0001"), ("0011"), ("0111"), ("1111") -> {
                         return false;
                     }
@@ -138,6 +140,7 @@ public class MoveSharpClient implements ClientModInitializer {
                 //  Climbing
                 if (Client.options.sprintKey.isPressed() &&
                         canClimbing &&
+                        !isCrawling &&
                         !isSliding &&
                         freeBelow(world, player.getPos()) &&
                         isOnWall(world, player, true)
@@ -160,6 +163,7 @@ public class MoveSharpClient implements ClientModInitializer {
                 //  Sliding
                 if (Client.options.sneakKey.isPressed() &&
                         canSliding &&
+                        !isCrawling &&
                         !isClimbing &&
                         freeBelow(world, player.getPos()) &&
                         isOnWall(world, player, false)
@@ -180,6 +184,16 @@ public class MoveSharpClient implements ClientModInitializer {
                     if (smoothSlide != null) smoothSlide.restore();
                 }
 
+                //  Crawling
+                if (Client.options.sprintKey.isPressed()) {
+                    if (Client.options.sneakKey.isPressed() &&
+                            !isSliding &&
+                            !isClimbing &&
+                            player.isOnGround()
+                    ) isCrawling = true;
+                    if (player.isCrawling()) isCrawling = true;
+                } else isCrawling = false;
+
                 //  Если игрок падает больше 5 блоков, то он не сможет зацепиться для карабканья или скольжения.
                 if (player.fallDistance >= 5) {
                     canClimbing = false;
@@ -190,7 +204,9 @@ public class MoveSharpClient implements ClientModInitializer {
                     canClimbing = true;
                     canSliding = true;
                 }
+
                 ModNetwork.playerSliding(isSliding);
+                ModNetwork.playerCrawling(isCrawling);
             }
         });
     }
