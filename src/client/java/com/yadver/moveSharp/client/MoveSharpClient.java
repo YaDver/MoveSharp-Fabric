@@ -6,6 +6,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.world.ClientWorld;
+import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.BlockView;
@@ -42,7 +43,7 @@ public class MoveSharpClient implements ClientModInitializer {
 
     //  True если блок над игроком пустой.
     public static boolean freeAbove(BlockView world, Vec3d playerPos) {
-        Vec3d _blockPos = playerPos.add(0, 2, 0);
+        Vec3d _blockPos = isCrawling ? playerPos.add(0, 1, 0) : playerPos.add(0, 2, 0);
         BlockState blockState = world.getBlockState(BlockPos.ofFloored(_blockPos));
         //  isAir() - Если блок является воздухом.
         //  isReplaceable() - Если блок является заменяемым, например травой, снегом или чем-то подобным.
@@ -62,7 +63,8 @@ public class MoveSharpClient implements ClientModInitializer {
         //  Получаем позицию блока перед игроком за счёт смещения позиции игрока на один блок в сторону направления взгляда.
         boolean xORz = Math.abs(p_look.x) > Math.abs(p_look.z);
         Vec3d _blockPos = xORz
-                ? p_pos.add(p_look.x, 0, 0) : p_pos.add(0, 0, p_look.z);
+                //  делим на два, чтобы карабканье и скольжение работали практически в упоре к стене.
+                ? p_pos.add(p_look.x/2, 0, 0) : p_pos.add(0, 0, p_look.z/2);
         StringBuilder blocksFront = new StringBuilder();
 
         //  Проверяем 4 блока перед персонажем на уровне ног и выше и создаём схему вида 0110, где 0 - блока нет, 1 - есть.
@@ -93,8 +95,7 @@ public class MoveSharpClient implements ClientModInitializer {
                     case ("1110"), ("0110"), ("0010") -> {
                         return fourBlockClimbMax;
                     }
-                    case ("0101"), ("0100")
-                            -> {
+                    case ("0101"), ("0100") -> {
                         return freeAbove(world, p_pos);
                     }
                     default -> {
@@ -103,12 +104,23 @@ public class MoveSharpClient implements ClientModInitializer {
                 }
             } else {
                 switch (blocksFront.toString()) {
-                    case ("0000"), ("0011"), ("0010"), ("0001") -> {
+                    case ("0000"), ("0011"), ("0010"), ("0001"), ("0111"), ("0101"), ("0110"), ("0100"),
+                         ("1000"), ("1011"), ("1001"), ("1010")   -> {
+                        if (!isCrawling && (blocksFront.toString().startsWith("01") ||
+                                (blocksFront.toString().startsWith("00") && !freeAbove(world, p_pos)) ||
+                                (blocksFront.toString().startsWith("10") && !freeAbove(world, p_pos)))) {
+                            player.sendMessage(Text.literal("asd"));
+
+                            isCrawling = true;
+                            ModNetwork.playerCrawling(true);
+                            return true;
+                        }
+                        if (blocksFront.toString().startsWith("10")) return true;
                         if (xORz) {
                             player.setVelocity(0.1 * Math.round(p_look.x), p_vel.y, p_vel.z);
                         } else player.setVelocity(p_vel.x, p_vel.y, 0.1 * Math.round(p_look.z));
-
                         return false;
+
                     }
                     default -> {
                         return true;
@@ -117,7 +129,7 @@ public class MoveSharpClient implements ClientModInitializer {
             }
         } else {
             switch (blocksFront.toString()) {
-                case ("1000"), ("1100"), ("1110"), ("1111") -> {
+                case ("1000"), ("1100"), ("1110"), ("1101"), ("1111") -> {
                     if (isSliding) return !(startSlidingPos - player.getPos().y > 3);
                     return true;
                 }
@@ -137,28 +149,37 @@ public class MoveSharpClient implements ClientModInitializer {
             if (player != null && world != null) {
                 Vec3d vel = player.getVelocity();
 
-                //  Climbing
-                if (Client.options.sprintKey.isPressed() &&
-                        canClimbing &&
-                        !isCrawling &&
-                        !isSliding &&
-                        freeBelow(world, player.getPos()) &&
-                        isOnWall(world, player, true)
+                if (Client.options.sprintKey.isPressed()) {
+
+                    //  Climbing
+                    if (canClimbing &&
+                            !isSliding &&
+                            freeBelow(world, player.getPos()) &&
+                            isOnWall(world, player, true)
                         ) {
-                    if (!isClimbing){
-                        if (vel.y > 0) {
-                            smoothClimb = new SmoothAcceleration(vel.y, climbingSpeed, 0.1);
-                        } else smoothClimb = new SmoothAcceleration(0, climbingSpeed, 0.1);
+                        if (!isClimbing){
+                            if (vel.y > 0) {
+                                smoothClimb = new SmoothAcceleration(vel.y, climbingSpeed, 0.1);
+                            } else smoothClimb = new SmoothAcceleration(0, climbingSpeed, 0.1);
+                        }
+                        isClimbing = isClimbing || !isCrawling;
+                        if (isClimbing) player.setVelocity(vel.x/2, smoothClimb.update() , vel.z/2);
+                    } else {
+                        if (isClimbing) {
+                            canClimbing = false;
+                            smoothClimb.restore();
+                            isClimbing = false;
+                        }
                     }
-                    isClimbing = true;
-                    player.setVelocity(vel.x, smoothClimb.update() , vel.z);
-                } else {
-                    if (isClimbing) {
-                        canClimbing = false;
-                        smoothClimb.restore();
-                        isClimbing = false;
-                    }
-                }
+
+                    //  Crawling
+                    if (Client.options.sneakKey.isPressed() &&
+                            !isSliding &&
+                            !isClimbing &&
+                            player.isOnGround()
+                    ) isCrawling = true;
+                    if (player.isCrawling()) isCrawling = true;
+                } else isCrawling = isCrawling && !freeAbove(world, player.getPos());
 
                 //  Sliding
                 if (Client.options.sneakKey.isPressed() &&
@@ -185,14 +206,14 @@ public class MoveSharpClient implements ClientModInitializer {
                 }
 
                 //  Crawling
-                if (Client.options.sprintKey.isPressed()) {
-                    if (Client.options.sneakKey.isPressed() &&
-                            !isSliding &&
-                            !isClimbing &&
-                            player.isOnGround()
-                    ) isCrawling = true;
-                    if (player.isCrawling()) isCrawling = true;
-                } else isCrawling = false;
+//                if (Client.options.sprintKey.isPressed()) {
+//                    if (Client.options.sneakKey.isPressed() &&
+//                            !isSliding &&
+//                            !isClimbing &&
+//                            player.isOnGround()
+//                    ) isCrawling = true;
+//                    if (player.isCrawling()) isCrawling = true;
+//                } else isCrawling = false;
 
                 //  Если игрок падает больше 5 блоков, то он не сможет зацепиться для карабканья или скольжения.
                 if (player.fallDistance >= 5) {
