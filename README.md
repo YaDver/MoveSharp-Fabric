@@ -1,4 +1,4 @@
-#[Page on Modrinth](https://modrinth.com/project/movesharp)
+# [Page on Modrinth](https://modrinth.com/project/movesharp)
 
 # MoveSharp - Enhanced Movement in Minecraft
 
