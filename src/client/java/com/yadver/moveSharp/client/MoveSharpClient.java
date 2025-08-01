@@ -109,8 +109,6 @@ public class MoveSharpClient implements ClientModInitializer {
                         if (!isCrawling && (blocksFront.toString().startsWith("01") ||
                                 (blocksFront.toString().startsWith("00") && !freeAbove(world, p_pos)) ||
                                 (blocksFront.toString().startsWith("10") && !freeAbove(world, p_pos)))) {
-                            player.sendMessage(Text.literal("asd"));
-
                             isCrawling = true;
                             ModNetwork.playerCrawling(true);
                             return true;
