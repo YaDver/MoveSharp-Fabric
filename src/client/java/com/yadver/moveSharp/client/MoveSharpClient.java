@@ -6,14 +6,15 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.world.ClientWorld;
-import net.minecraft.text.Text;
+import net.minecraft.registry.RegistryKeys;
+import net.minecraft.registry.tag.TagKey;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.BlockView;
 
 public class MoveSharpClient implements ClientModInitializer {
     public static final String MOD_ID = "move-sharp";
-//    private static Logger LOGGER = new Logger();
 
     static boolean isClimbing = false;
     static boolean isSliding = false;
@@ -21,58 +22,89 @@ public class MoveSharpClient implements ClientModInitializer {
     static boolean canClimbing = true;
     static boolean canSliding = true;
 
-    //  Если true - увеличивает максимальную высоту для карабканья с 3-х до 4-х блоков.
-    static boolean fourBlockClimbMax = true;
-
-    private static double startSlidingPos;
+    private static double startPos;
     SmoothAcceleration smoothClimb;
     SmoothAcceleration smoothSlide;
 
     static double climbingSpeed = 0.15;
     static double slidingSpeed = -0.05;
 
+    public static boolean checkBlock(BlockView world, BlockPos blockPos) {
+        BlockState blockState = world.getBlockState(blockPos);
+        return (blockState.isAir()
+                || blockState.isReplaceable()
+                || blockState.isIn(TagKey.of(
+                        RegistryKeys.BLOCK, Identifier.of("c", "flowers")))
+                || blockState.isIn(TagKey.of(
+                        RegistryKeys.BLOCK, Identifier.of("minecraft", "buttons")))
+                || blockState.isIn(TagKey.of(
+                        RegistryKeys.BLOCK, Identifier.of("c", "seeds")))
+        );
+    }
+
     //  True если блок под игроком пустой.
     public static boolean freeBelow(BlockView world, Vec3d playerPos) {
         Vec3d _blockPos = playerPos.add(0, -1, 0);
-        BlockState blockState = world.getBlockState(BlockPos.ofFloored(_blockPos));
-        //  isAir() - Если блок является воздухом.
-        //  isReplaceable() - Если блок является заменяемым, например травой, снегом или чем-то подобным.
-        //  Посаженые растения не являются ни тем, ни другим. Нужно найти для этого решение.
-        return (blockState.isAir() || blockState.isReplaceable());
+        return (checkBlock(world, BlockPos.ofFloored(_blockPos))
+                || world.getBlockState(BlockPos.ofFloored(_blockPos)).isIn(TagKey.of(
+                        RegistryKeys.BLOCK, Identifier.of("minecraft", "trapdoors")))
+                || world.getBlockState(BlockPos.ofFloored(_blockPos)).isIn(TagKey.of(
+                        RegistryKeys.BLOCK, Identifier.of("minecraft", "slabs")))
+                || world.getBlockState(BlockPos.ofFloored(_blockPos)).isIn(TagKey.of(
+                RegistryKeys.BLOCK, Identifier.of("c", "fence")))
+                || world.getBlockState(BlockPos.ofFloored(_blockPos)).isIn(TagKey.of(
+                RegistryKeys.BLOCK, Identifier.of("c", "fence_gates")))
+        );
     }
 
     //  True если блок над игроком пустой.
     public static boolean freeAbove(BlockView world, Vec3d playerPos) {
-        Vec3d _blockPos = isCrawling ? playerPos.add(0, 1, 0) : playerPos.add(0, 2, 0);
-        BlockState blockState = world.getBlockState(BlockPos.ofFloored(_blockPos));
-        //  isAir() - Если блок является воздухом.
-        //  isReplaceable() - Если блок является заменяемым, например травой, снегом или чем-то подобным.
-        //  Так как блок над игроком в теории не может быть растением или слоём снега в isReplaceable() нет нужды.
-        //  Но так как это работает, я трогать не буду. Вдруг есть блоки, которые считаются заменяемыми, через них можно
-        //  проходить, и тогда этот метод будет необходим (возможно в других модах или в майнкрафт есть подобные).
-        return (blockState.isAir() || blockState.isReplaceable());
+        Vec3d _blockPos;
+        if (isCrawling) _blockPos = playerPos.add(0, 1, 0);
+        else _blockPos = playerPos.add(0, 2, 0);
+
+        return (world.getBlockState(BlockPos.ofFloored(_blockPos)).isAir()
+                || world.getBlockState(BlockPos.ofFloored(_blockPos)).isIn(TagKey.of(
+                RegistryKeys.BLOCK, Identifier.of("minecraft", "trapdoors")))
+        );
     }
 
     //  Получаем boolean, когда персонаж стоит у стены и смотрит на неё.
     //  Работа описана внутри метода.
-    public static boolean isOnWall(BlockView world, ClientPlayerEntity player, boolean isClimbRequest) {
+    public static boolean isOnWall(BlockView world, ClientPlayerEntity player, boolean isClimbRequest , boolean nado) {
         Vec3d p_look = player.getRotationVector();
         Vec3d p_pos = player.getPos();
         Vec3d p_vel = player.getVelocity();
 
+//        if (world.getBlockState(BlockPos.ofFloored(p_pos)).isIn(TagKey.of())
+//        ) return false;
+
         //  Получаем позицию блока перед игроком за счёт смещения позиции игрока на один блок в сторону направления взгляда.
         boolean xORz = Math.abs(p_look.x) > Math.abs(p_look.z);
-        Vec3d _blockPos = xORz
-                //  делим на два, чтобы карабканье и скольжение работали практически в упоре к стене.
-                ? p_pos.add(p_look.x/2, 0, 0) : p_pos.add(0, 0, p_look.z/2);
+        BlockPos _blockPos;
+        if (isClimbRequest) {
+            _blockPos = BlockPos.ofFloored(xORz
+                    //  Делим на два, чтобы карабканье работало практически в упоре к стене.
+                    ? p_pos.add(p_look.x/2, 0, 0) : p_pos.add(0, 0, p_look.z/2));
+        } else {
+            _blockPos = BlockPos.ofFloored(xORz
+                    //  Не делим на два, чтобы скольжение работало не в упоре к стене.
+                    ? p_pos.add(p_look.x, 0, 0) : p_pos.add(0, 0, p_look.z));
+        }
+
+        if (world.getBlockState(_blockPos).isIn(TagKey.of(
+                RegistryKeys.BLOCK, Identifier.of("c", "fence")))
+                || world.getBlockState(_blockPos).isIn(TagKey.of(
+                RegistryKeys.BLOCK, Identifier.of("c", "fence_gates")))
+        ) return true;
+
         StringBuilder blocksFront = new StringBuilder();
 
         //  Проверяем 4 блока перед персонажем на уровне ног и выше и создаём схему вида 0110, где 0 - блока нет, 1 - есть.
         //  Возможное изменение: вместо методов freeBelow() и freeAbove() добавить в схему два новых значения по краям,
         //  тогда 100001 говорит о том, что перед игроком нет блоков на высоте 4-х блоков, но под ним и над ним есть блоки.
         for (int b = 0; b<=3; b++) {
-            if (world.getBlockState(BlockPos.ofFloored(_blockPos.add(0, b, 0))).isAir() ||
-                    world.getBlockState(BlockPos.ofFloored(_blockPos.add(0, b, 0))).isReplaceable()) {
+            if (checkBlock(world, _blockPos.add(0, b, 0))) {
                 blocksFront.append("0");
             } else blocksFront.append("1");
         }
@@ -84,19 +116,16 @@ public class MoveSharpClient implements ClientModInitializer {
         //  на механику скольжения)
         if (isClimbRequest) {
             if (!isClimbing) {
+                for(int i = 0; i < blocksFront.toString().length(); i++) {
+                    if(blocksFront.toString().charAt(i) == '0') {
+                        startPos = _blockPos.getY() + i;
+                    }
+                }
                 switch (blocksFront.toString()) {
                     //  Ограничивает карабканье, если перед игроком блоков нет или 5-й блок (при прыжке
                     //  становиться 4-м) не позволит залезть на стену из-за лимита во максимальной высоте карабканья.
                     case ("0000"), ("0001"), ("0011"), ("0111"), ("1111") -> {
                         return false;
-                    }
-                    //  Ограничение на максимальную высоту карабканья (от земли) в 4 блока можно установить, если
-                    //  параметр fourBlockClimbMax будет true, иначе ограничение будет в 3 блока
-                    case ("1110"), ("0110"), ("0010") -> {
-                        return fourBlockClimbMax;
-                    }
-                    case ("0101"), ("0100") -> {
-                        return freeAbove(world, p_pos);
                     }
                     default -> {
                         return true;
@@ -104,21 +133,34 @@ public class MoveSharpClient implements ClientModInitializer {
                 }
             } else {
                 switch (blocksFront.toString()) {
-                    case ("0000"), ("0011"), ("0010"), ("0001"), ("0111"), ("0101"), ("0110"), ("0100"),
-                         ("1000"), ("1011"), ("1001"), ("1010")   -> {
-                        if (!isCrawling && (blocksFront.toString().startsWith("01") ||
-                                (blocksFront.toString().startsWith("00") && !freeAbove(world, p_pos)) ||
-                                (blocksFront.toString().startsWith("10") && !freeAbove(world, p_pos)))) {
+                    case ("0000"), ("0011"), ("0010"), ("0001"),
+                         ("0111"), ("0101"), ("0110"), ("0100"),
+                         ("1000"), ("1011"), ("1001"), ("1010") -> {
+                        if (!isCrawling
+                                && (blocksFront.toString().startsWith("10")
+                                && !freeAbove(world, p_pos))
+                        ) {
+                            isCrawling = true;
+                            ModNetwork.playerCrawling(true);
+                            return true;
+
+                        }
+                        else if (!isCrawling
+                                && blocksFront.toString().startsWith("01")) {
+                            if (startPos != _blockPos.getY() && !nado) return true;
+
                             isCrawling = true;
                             ModNetwork.playerCrawling(true);
                             return true;
                         }
-                        if (blocksFront.toString().startsWith("10")) return true;
-                        if (xORz) {
-                            player.setVelocity(0.1 * Math.round(p_look.x), p_vel.y, p_vel.z);
-                        } else player.setVelocity(p_vel.x, p_vel.y, 0.1 * Math.round(p_look.z));
-                        return false;
 
+                        if (blocksFront.toString().startsWith("0")) {
+                            if (xORz) {
+                                player.setVelocity(0.1 * Math.round(p_look.x), p_vel.y, p_vel.z);
+                            } else player.setVelocity(p_vel.x, p_vel.y, 0.1 * Math.round(p_look.z));
+                            return false;
+                        }
+                        return true;
                     }
                     default -> {
                         return true;
@@ -128,7 +170,7 @@ public class MoveSharpClient implements ClientModInitializer {
         } else {
             switch (blocksFront.toString()) {
                 case ("1000"), ("1100"), ("1110"), ("1101"), ("1111") -> {
-                    if (isSliding) return !(startSlidingPos - player.getPos().y > 3);
+                    if (isSliding) return !(startPos - player.getPos().y > 3);
                     return true;
                 }
                 default -> {
@@ -150,14 +192,15 @@ public class MoveSharpClient implements ClientModInitializer {
                 if (Client.options.sprintKey.isPressed()) {
 
                     //  Climbing
-                    if (canClimbing &&
-                            !isSliding &&
-                            freeBelow(world, player.getPos()) &&
-                            isOnWall(world, player, true)
+                    if (canClimbing
+                            && !isSliding
+                            && !player.isOnGround()
+                            && freeBelow(world, player.getPos())
+                            && isOnWall(world, player, true, Client.options.sneakKey.isPressed())
                         ) {
                         if (!isClimbing){
                             if (vel.y > 0) {
-                                smoothClimb = new SmoothAcceleration(vel.y, climbingSpeed, 0.1);
+                                smoothClimb = new SmoothAcceleration(vel.y, climbingSpeed/2 , 0.1);
                             } else smoothClimb = new SmoothAcceleration(0, climbingSpeed, 0.1);
                         }
                         isClimbing = isClimbing || !isCrawling;
@@ -171,29 +214,27 @@ public class MoveSharpClient implements ClientModInitializer {
                     }
 
                     //  Crawling
-                    if (Client.options.sneakKey.isPressed() &&
-                            !isSliding &&
-                            !isClimbing &&
-                            player.isOnGround()
+                    if (Client.options.sneakKey.isPressed()
+                            && !isSliding
+                            && !isClimbing
+                            && player.isOnGround()
                     ) isCrawling = true;
                     if (player.isCrawling()) isCrawling = true;
                 } else isCrawling = isCrawling && !freeAbove(world, player.getPos());
 
                 //  Sliding
-                if (Client.options.sneakKey.isPressed() &&
-                        canSliding &&
-                        !isCrawling &&
-                        !isClimbing &&
-                        freeBelow(world, player.getPos()) &&
-                        isOnWall(world, player, false)
+                if (Client.options.sneakKey.isPressed()
+                        && canSliding
+                        && !isCrawling
+                        && !isClimbing
+                        && freeBelow(world, player.getPos())
+                        && isOnWall(world, player, false, false)
                 ) {
                     if (!isSliding) {
-                        startSlidingPos = player.getPos().y;
+                        startPos = player.getPos().y;
                         smoothSlide = new SmoothAcceleration(vel.y, slidingSpeed, 0.1);
                     }
-
                     player.setVelocity(vel.x/2, smoothSlide.update(), vel.z/2);
-
                     isSliding = true;
                 } else {
                     if (isSliding) {
@@ -203,18 +244,8 @@ public class MoveSharpClient implements ClientModInitializer {
                     if (smoothSlide != null) smoothSlide.restore();
                 }
 
-                //  Crawling
-//                if (Client.options.sprintKey.isPressed()) {
-//                    if (Client.options.sneakKey.isPressed() &&
-//                            !isSliding &&
-//                            !isClimbing &&
-//                            player.isOnGround()
-//                    ) isCrawling = true;
-//                    if (player.isCrawling()) isCrawling = true;
-//                } else isCrawling = false;
-
                 //  Если игрок падает больше 5 блоков, то он не сможет зацепиться для карабканья или скольжения.
-                if (player.fallDistance >= 5) {
+                if (player.fallDistance >= 10) {
                     canClimbing = false;
                     canSliding = false;
                 }
