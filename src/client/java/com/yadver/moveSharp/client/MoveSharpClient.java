@@ -8,6 +8,7 @@ import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.registry.tag.TagKey;
+import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
@@ -33,27 +34,36 @@ public class MoveSharpClient implements ClientModInitializer {
         BlockState blockState = world.getBlockState(blockPos);
         return (blockState.isAir()
                 || blockState.isReplaceable()
-                || blockState.isIn(TagKey.of(
-                        RegistryKeys.BLOCK, Identifier.of("c", "flowers")))
-                || blockState.isIn(TagKey.of(
-                        RegistryKeys.BLOCK, Identifier.of("minecraft", "buttons")))
-                || blockState.isIn(TagKey.of(
-                        RegistryKeys.BLOCK, Identifier.of("c", "seeds")))
+                || (blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
+                        "minecraft", "flowers")))
+                    && !blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
+                            "minecraft", "leaves"))))
+                || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
+                        "minecraft", "crops")))
+                || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
+                        "minecraft", "climbable")))
+                || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
+                        "minecraft", "buttons")))
+                || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
+                        "minecraft", "wall_post_override")))
         );
     }
 
     //  True если блок под игроком пустой.
     public static boolean freeBelow(BlockView world, Vec3d playerPos) {
         Vec3d _blockPos = playerPos.add(0, -1, 0);
+        BlockState blockState = world.getBlockState(BlockPos.ofFloored(_blockPos));
         return (checkBlock(world, BlockPos.ofFloored(_blockPos))
-                || world.getBlockState(BlockPos.ofFloored(_blockPos)).isIn(TagKey.of(
-                        RegistryKeys.BLOCK, Identifier.of("minecraft", "trapdoors")))
-                || world.getBlockState(BlockPos.ofFloored(_blockPos)).isIn(TagKey.of(
-                        RegistryKeys.BLOCK, Identifier.of("minecraft", "slabs")))
-                || world.getBlockState(BlockPos.ofFloored(_blockPos)).isIn(TagKey.of(
-                RegistryKeys.BLOCK, Identifier.of("c", "fence")))
-                || world.getBlockState(BlockPos.ofFloored(_blockPos)).isIn(TagKey.of(
-                RegistryKeys.BLOCK, Identifier.of("c", "fence_gates")))
+                || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
+                        "minecraft", "trapdoors")))
+                || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
+                        "minecraft", "slabs")))
+                || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
+                        "minecraft", "fences")))
+                || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
+                        "minecraft", "fence_gates")))
+                || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
+                        "minecraft", "walls")))
         );
     }
 
@@ -62,9 +72,10 @@ public class MoveSharpClient implements ClientModInitializer {
         Vec3d _blockPos;
         if (isCrawling) _blockPos = playerPos.add(0, 1, 0);
         else _blockPos = playerPos.add(0, 2, 0);
+        BlockState blockState = world.getBlockState(BlockPos.ofFloored(_blockPos));
 
-        return (world.getBlockState(BlockPos.ofFloored(_blockPos)).isAir()
-                || world.getBlockState(BlockPos.ofFloored(_blockPos)).isIn(TagKey.of(
+        return (blockState.isAir()
+                || blockState.isIn(TagKey.of(
                 RegistryKeys.BLOCK, Identifier.of("minecraft", "trapdoors")))
         );
     }
@@ -76,29 +87,24 @@ public class MoveSharpClient implements ClientModInitializer {
         Vec3d p_pos = player.getPos();
         Vec3d p_vel = player.getVelocity();
 
-//        if (world.getBlockState(BlockPos.ofFloored(p_pos)).isIn(TagKey.of())
-//        ) return false;
-
         //  Получаем позицию блока перед игроком за счёт смещения позиции игрока на один блок в сторону направления взгляда.
         boolean xORz = Math.abs(p_look.x) > Math.abs(p_look.z);
         BlockPos _blockPos;
-        if (isClimbRequest) {
-            _blockPos = BlockPos.ofFloored(xORz
-                    //  Делим на два, чтобы карабканье работало практически в упоре к стене.
-                    ? p_pos.add(p_look.x/2, 0, 0) : p_pos.add(0, 0, p_look.z/2));
-        } else {
-            _blockPos = BlockPos.ofFloored(xORz
-                    //  Не делим на два, чтобы скольжение работало не в упоре к стене.
-                    ? p_pos.add(p_look.x, 0, 0) : p_pos.add(0, 0, p_look.z));
-        }
+        Vec3d p_look_normal = new Vec3d(
+                (xORz) ? ((p_look.x < 0) ? -Math.ceil(-p_look.x) : Math.ceil(p_look.x)) : 0,
+                0,
+                (xORz) ? 0 : ((p_look.z < 0) ? -Math.ceil(-p_look.z) : Math.ceil(p_look.z))
+        );
 
-        if (world.getBlockState(_blockPos).isIn(TagKey.of(
-                RegistryKeys.BLOCK, Identifier.of("c", "fence")))
-                || world.getBlockState(_blockPos).isIn(TagKey.of(
-                RegistryKeys.BLOCK, Identifier.of("c", "fence_gates")))
-        ) return true;
+        //  Делим на два, чтобы карабканье работало практически в упоре к стене.
+        if (isClimbRequest) _blockPos = BlockPos.ofFloored(p_pos.add(
+                p_look_normal.x * 0.5, 0, p_look_normal.z * 0.5));
+        //  Не делим на два, чтобы скольжение работало не в упоре к стене.
+        else _blockPos = BlockPos.ofFloored(p_pos.add(
+                p_look_normal.x, 0, p_look_normal.z));
 
         StringBuilder blocksFront = new StringBuilder();
+        StringBuilder blocksAbove = new StringBuilder();
 
         //  Проверяем 4 блока перед персонажем на уровне ног и выше и создаём схему вида 0110, где 0 - блока нет, 1 - есть.
         //  Возможное изменение: вместо методов freeBelow() и freeAbove() добавить в схему два новых значения по краям,
@@ -109,15 +115,41 @@ public class MoveSharpClient implements ClientModInitializer {
             } else blocksFront.append("1");
         }
 
+        //  Проверяем 4 блока перед персонажем на уровне ног и выше и создаём схему вида 0110, где 0 - блока нет, 1 - есть.
+        //  Возможное изменение: вместо методов freeBelow() и freeAbove() добавить в схему два новых значения по краям,
+        //  тогда 100001 говорит о том, что перед игроком нет блоков на высоте 4-х блоков, но под ним и над ним есть блоки.
+        for (int b = 0; b<=3; b++) {
+            if (checkBlock(world, BlockPos.ofFloored(p_pos.add(0, b, 0)))) {
+                blocksAbove.append("0");
+            } else blocksAbove.append("1");
+        }
+
         //  Проверяем все варианты, при которых игрок может карабкаться или скользить.
         //  isClimbRequest необходим, так как этот метод вызывают как карабканье, так и скольжение.
         //  (Если игрок скользит по стене, то это считается за условие !isClimbing, и работает та логика метода, которая
         //  ограничивает условия, когда может позволить игроку начать карабкаться. А эти ограничения не должны работать
         //  на механику скольжения)
         if (isClimbRequest) {
+            BlockPos blockPos = BlockPos.ofFloored(p_pos.add(
+                    p_look_normal.x * 0.5,-0.5,p_look_normal.z * 0.5));
+            BlockState blockState = world.getBlockState(blockPos);
+
+            if (blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
+                    "minecraft", "walls")))
+                    || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
+                    "minecraft", "fences")))
+                    || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
+                    "minecraft", "fence_gates")))
+//                                    || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
+//                                    "minecraft", "slabs")))
+            ) return true;
+
             if (!isClimbing) {
-                for(int i = 0; i < blocksFront.toString().length(); i++) {
+                boolean checkAbove = true;
+                for(int i = 0; i < 4; i++) {
                     if(blocksFront.toString().charAt(i) == '0') {
+                        if(checkAbove && blocksAbove.toString().charAt(i) == '1') return false;
+                        else checkAbove = false;
                         startPos = _blockPos.getY() + i;
                     }
                 }
@@ -147,17 +179,25 @@ public class MoveSharpClient implements ClientModInitializer {
                         }
                         else if (!isCrawling
                                 && blocksFront.toString().startsWith("01")) {
-                            if (startPos != _blockPos.getY() && !nado) return true;
+                            if (startPos != _blockPos.getY() && !nado && freeAbove(world, p_pos)) return true;
 
                             isCrawling = true;
                             ModNetwork.playerCrawling(true);
                             return true;
                         }
 
-                        if (blocksFront.toString().startsWith("0")) {
+                        if (blocksFront.toString().startsWith("0")
+                                || (blocksFront.toString().startsWith("1")
+                                && (blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
+                                        "minecraft", "slabs")))
+                                || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
+                                        "minecraft", "trapdoors"))))
+                                && (blockPos.getY() + blockState.getCollisionShape(world, blockPos)
+                                .getBoundingBox().maxY - p_pos.y) <= 0
+                        )) {
                             if (xORz) {
-                                player.setVelocity(0.1 * Math.round(p_look.x), p_vel.y, p_vel.z);
-                            } else player.setVelocity(p_vel.x, p_vel.y, 0.1 * Math.round(p_look.z));
+                                player.setVelocity(0.1 * p_look_normal.x, p_vel.y, p_vel.z);
+                            } else player.setVelocity(p_vel.x, p_vel.y, 0.1 * p_look_normal.z);
                             return false;
                         }
                         return true;
