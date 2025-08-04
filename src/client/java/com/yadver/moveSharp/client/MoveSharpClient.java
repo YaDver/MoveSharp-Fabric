@@ -8,6 +8,7 @@ import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.registry.tag.TagKey;
+import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
@@ -131,7 +132,20 @@ public class MoveSharpClient implements ClientModInitializer {
         if (isClimbRequest) {
             BlockPos blockPos = BlockPos.ofFloored(p_pos.add(
                     p_look_normal.x * 0.5,-0.5,p_look_normal.z * 0.5));
+            BlockPos blockPos2 = BlockPos.ofFloored(p_pos.add(
+                    p_look_normal.x * 0.5,+0.5,p_look_normal.z * 0.5));
             BlockState blockState = world.getBlockState(blockPos);
+            BlockState blockState2 = world.getBlockState(blockPos2);
+            player.sendMessage(Text.literal(blockPos + " | " + blockPos2));
+
+            if (!isClimbing
+                    && (blockState2.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
+                    "minecraft", "walls")))
+                    || blockState2.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
+                    "minecraft", "fences")))
+                    || blockState2.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
+                    "minecraft", "fence_gates")))
+            )) return false;
 
             if (blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
                     "minecraft", "walls")))
@@ -139,8 +153,6 @@ public class MoveSharpClient implements ClientModInitializer {
                     "minecraft", "fences")))
                     || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
                     "minecraft", "fence_gates")))
-//                                    || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
-//                                    "minecraft", "slabs")))
             ) return true;
 
             if (!isClimbing) {
