@@ -16,7 +16,7 @@ MoveSharp expands the basic movement mechanics in Minecraft by adding new ways t
 
 ## Limitations
 
-*   **Fall Height:** You cannot grab onto a wall for sliding or climbing if you are falling more than 5 blocks high.
+*   **Fall Height:** You cannot grab onto a wall for sliding or climbing if you are falling more than 10 blocks high.
 *   **Repeated Use:**  You cannot reuse these mechanics until you have landed.
 
 ## Minecraft Version Support
