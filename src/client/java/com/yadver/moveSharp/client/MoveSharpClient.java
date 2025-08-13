@@ -3,18 +3,34 @@ package com.yadver.moveSharp.client;
 import com.yadver.moveSharp.client.Utils.SmoothAcceleration;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientLoginConnectionEvents;
+import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.network.ClientLoginNetworkHandler;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.world.ClientWorld;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.data.DataTracker;
+import net.minecraft.entity.data.TrackedData;
+import net.minecraft.entity.data.TrackedDataHandlerRegistry;
+import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.registry.RegistryKeys;
+import net.minecraft.registry.entry.RegistryEntryList;
 import net.minecraft.registry.tag.TagKey;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.BlockView;
 
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import static com.yadver.moveSharp.client.Utils.CheckBlock.*;
+
 public class MoveSharpClient implements ClientModInitializer {
     public static final String MOD_ID = "move-sharp";
+    public static Logger logger = Logger.getLogger(MOD_ID);
 
     static boolean isClimbing = false;
     static boolean isSliding = false;
@@ -45,28 +61,21 @@ public class MoveSharpClient implements ClientModInitializer {
                 (xORz) ? 0 : ((p_look.z < 0) ? -Math.ceil(-p_look.z) : Math.ceil(p_look.z))
         );
 
-        //  Делим на два, чтобы карабканье работало практически в упоре к стене.
         if (isClimbRequest) _blockPos = BlockPos.ofFloored(p_pos.add(
                 p_look_normal.x * 0.5, 0, p_look_normal.z * 0.5));
-        //  Не делим на два, чтобы скольжение работало не в упоре к стене.
         else _blockPos = BlockPos.ofFloored(p_pos.add(
-                p_look_normal.x, 0, p_look_normal.z));
+                p_look_normal.x * 0.75, 0, p_look_normal.z * 0.75));
 
         StringBuilder blocksFront = new StringBuilder();
         StringBuilder blocksAbove = new StringBuilder();
 
         //  Проверяем 4 блока перед персонажем на уровне ног и выше и создаём схему вида 0110, где 0 - блока нет, 1 - есть.
-        //  Возможное изменение: вместо методов freeBelow() и freeAbove() добавить в схему два новых значения по краям,
-        //  тогда 100001 говорит о том, что перед игроком нет блоков на высоте 4-х блоков, но под ним и над ним есть блоки.
         for (int b = 0; b<=3; b++) {
             if (freeBlock(world, _blockPos.add(0, b, 0))) {
                 blocksFront.append("0");
             } else blocksFront.append("1");
         }
 
-        //  Проверяем 4 блока перед персонажем на уровне ног и выше и создаём схему вида 0110, где 0 - блока нет, 1 - есть.
-        //  Возможное изменение: вместо методов freeBelow() и freeAbove() добавить в схему два новых значения по краям,
-        //  тогда 100001 говорит о том, что перед игроком нет блоков на высоте 4-х блоков, но под ним и над ним есть блоки.
         for (int b = 0; b<=3; b++) {
             if (freeBlock(world, BlockPos.ofFloored(p_pos.add(0, b, 0)))) {
                 blocksAbove.append("0");
@@ -152,8 +161,8 @@ public class MoveSharpClient implements ClientModInitializer {
                                 || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
                                         "minecraft", "trapdoors"))))
                                 && (blockPos.getY() + blockState.getCollisionShape(world, blockPos)
-                                .getBoundingBox().maxY - p_pos.y) <= 0
-                        )) {
+                                .getBoundingBox().maxY - p_pos.y) <= 0)
+                        ) {
                             if (xORz) {
                                 player.setVelocity(0.1 * p_look_normal.x, p_vel.y, p_vel.z);
                             } else player.setVelocity(p_vel.x, p_vel.y, 0.1 * p_look_normal.z);
@@ -223,6 +232,7 @@ public class MoveSharpClient implements ClientModInitializer {
 
                 //  Sliding
                 if (Client.options.sneakKey.isPressed()
+                        && player.getVelocity().y < 0
                         && canSliding
                         && !isCrawling
                         && !isClimbing
@@ -243,7 +253,7 @@ public class MoveSharpClient implements ClientModInitializer {
                     if (smoothSlide != null) smoothSlide.restore();
                 }
 
-                //  Если игрок падает больше 5 блоков, то он не сможет зацепиться для карабканья или скольжения.
+                //  Если игрок падает больше 10 блоков, то он не сможет зацепиться для карабканья или скольжения.
                 if (player.fallDistance >= 10) {
                     canClimbing = false;
                     canSliding = false;
