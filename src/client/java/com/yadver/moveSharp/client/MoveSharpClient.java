@@ -29,56 +29,6 @@ public class MoveSharpClient implements ClientModInitializer {
     static double climbingSpeed = 0.15;
     static double slidingSpeed = -0.05;
 
-    public static boolean checkBlock(BlockView world, BlockPos blockPos) {
-        BlockState blockState = world.getBlockState(blockPos);
-        return (blockState.isAir()
-                || blockState.isReplaceable()
-                || (blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
-                        "minecraft", "flowers")))
-                    && !blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
-                            "minecraft", "leaves"))))
-                || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
-                        "minecraft", "crops")))
-                || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
-                        "minecraft", "climbable")))
-                || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
-                        "minecraft", "buttons")))
-                || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
-                        "minecraft", "wall_post_override")))
-        );
-    }
-
-    //  True если блок под игроком пустой.
-    public static boolean freeBelow(BlockView world, Vec3d playerPos) {
-        Vec3d _blockPos = playerPos.add(0, -1, 0);
-        BlockState blockState = world.getBlockState(BlockPos.ofFloored(_blockPos));
-        return (checkBlock(world, BlockPos.ofFloored(_blockPos))
-                || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
-                        "minecraft", "trapdoors")))
-                || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
-                        "minecraft", "slabs")))
-                || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
-                        "minecraft", "fences")))
-                || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
-                        "minecraft", "fence_gates")))
-                || blockState.isIn(TagKey.of(RegistryKeys.BLOCK, Identifier.of(
-                        "minecraft", "walls")))
-        );
-    }
-
-    //  True если блок над игроком пустой.
-    public static boolean freeAbove(BlockView world, Vec3d playerPos) {
-        Vec3d _blockPos;
-        if (isCrawling) _blockPos = playerPos.add(0, 1, 0);
-        else _blockPos = playerPos.add(0, 2, 0);
-        BlockState blockState = world.getBlockState(BlockPos.ofFloored(_blockPos));
-
-        return (blockState.isAir()
-                || blockState.isIn(TagKey.of(
-                RegistryKeys.BLOCK, Identifier.of("minecraft", "trapdoors")))
-        );
-    }
-
     //  Получаем boolean, когда персонаж стоит у стены и смотрит на неё.
     //  Работа описана внутри метода.
     public static boolean isOnWall(BlockView world, ClientPlayerEntity player, boolean isClimbRequest , boolean nado) {
@@ -109,7 +59,7 @@ public class MoveSharpClient implements ClientModInitializer {
         //  Возможное изменение: вместо методов freeBelow() и freeAbove() добавить в схему два новых значения по краям,
         //  тогда 100001 говорит о том, что перед игроком нет блоков на высоте 4-х блоков, но под ним и над ним есть блоки.
         for (int b = 0; b<=3; b++) {
-            if (checkBlock(world, _blockPos.add(0, b, 0))) {
+            if (freeBlock(world, _blockPos.add(0, b, 0))) {
                 blocksFront.append("0");
             } else blocksFront.append("1");
         }
@@ -118,7 +68,7 @@ public class MoveSharpClient implements ClientModInitializer {
         //  Возможное изменение: вместо методов freeBelow() и freeAbove() добавить в схему два новых значения по краям,
         //  тогда 100001 говорит о том, что перед игроком нет блоков на высоте 4-х блоков, но под ним и над ним есть блоки.
         for (int b = 0; b<=3; b++) {
-            if (checkBlock(world, BlockPos.ofFloored(p_pos.add(0, b, 0)))) {
+            if (freeBlock(world, BlockPos.ofFloored(p_pos.add(0, b, 0)))) {
                 blocksAbove.append("0");
             } else blocksAbove.append("1");
         }
