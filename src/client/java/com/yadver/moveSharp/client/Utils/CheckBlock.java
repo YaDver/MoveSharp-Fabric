@@ -9,7 +9,6 @@ import net.minecraft.registry.tag.TagKey;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.shape.VoxelShape;
 import net.minecraft.world.BlockView;
 
 import static com.yadver.moveSharp.client.MoveSharpClient.isCrawling;
