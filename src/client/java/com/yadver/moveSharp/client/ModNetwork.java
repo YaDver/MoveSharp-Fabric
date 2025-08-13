@@ -5,6 +5,8 @@ import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.minecraft.network.PacketByteBuf;
 import net.minecraft.util.Identifier;
 
+import java.util.UUID;
+
 public class ModNetwork {
     private static final Identifier CHANNEL_slide = new Identifier(MoveSharpClient.MOD_ID, "slide");
     private static final Identifier CHANNEL_crawl = new Identifier(MoveSharpClient.MOD_ID, "crawl");
